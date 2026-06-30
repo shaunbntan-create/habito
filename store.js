@@ -46,12 +46,57 @@
       if (cloudName && !localStorage.getItem(NKEY)) localStorage.setItem(NKEY, cloudName);
     } catch (_) {}
     if (client && user && !user.demo) { mode = "cloud"; await loadCloud(); }
-    else { mode = "local"; loadLocal(); }
+    else {
+      mode = "local"; loadLocal();
+      // Real accounts stay blank. The DEMO gets fake data once (for the
+      // public showcase), and only on first launch — reset keeps it empty.
+      if (user && user.demo) {
+        let seeded = false; try { seeded = !!localStorage.getItem(DEMO_SEED_KEY); } catch (_) {}
+        if (!seeded && !habits.length && !Object.keys(moods).length) seedDemo();
+      }
+    }
   }
   function loadLocal() {
-    // No seeding: everyone (demo + real) starts at zero and builds from scratch.
     try { habits = JSON.parse(localStorage.getItem(HKEY)) || []; } catch (_) { habits = []; }
     try { moods = JSON.parse(localStorage.getItem(MKEY)) || {}; } catch (_) { moods = {}; }
+  }
+
+  /* ---------- demo seed (fake data for the public demo only) ---------- */
+  const DEMO_SEED_KEY = "habito.demoSeeded.v1";
+  const DEMO_AUDIT_KEY = "habito.audit.v2"; // matches screens.js AUDIT_KEY
+  const SEED = [
+    { name: "Read 20 pages", emoji: "📖", color: "pink",   freq: "Every day" },
+    { name: "Workout",       emoji: "🏋️", color: "coral",  freq: "Weekdays" },
+    { name: "Drink water",   emoji: "💧", color: "blue",   freq: "Every day" },
+    { name: "Meditate",      emoji: "🧘", color: "purple", freq: "Every day" },
+    { name: "Sleep 8h",      emoji: "🌙", color: "yellow", freq: "Every day" },
+  ];
+  function seedHistory(tpl, idx) {
+    const done = {}, t = today();
+    for (let i = 0; i < 119; i++) {
+      const day = addDays(t, -i);
+      if (!isDue(tpl, day)) continue;
+      if (i === 0) { if ((idx + parse(day).getDate()) % 10 < 4) done[day] = true; }
+      else if (i <= 6) { done[day] = true; }
+      else { if ((idx * 3 + parse(day).getDate() * 7 + parse(day).getMonth()) % 10 < 8) done[day] = true; }
+    }
+    return done;
+  }
+  function seedDemo() {
+    habits = SEED.map((s, idx) => ({ id: rid(), ...s, done: seedHistory(s, idx) }));
+    const keys = ["happy", "calm", "happy", "sleepy", "calm", "anxious", "sad", "happy", "angry", "calm"];
+    moods = {};
+    const t = today();
+    for (let i = 0; i < 50; i++) {
+      const day = addDays(t, -i);
+      const s = parse(day).getDate() * 3 + parse(day).getMonth();
+      moods[day] = { key: keys[s % keys.length], sleep: 55 + (s % 9) * 5, stress: 22 + (s % 7) * 9 };
+    }
+    saveLocal();
+    try {
+      localStorage.setItem(DEMO_AUDIT_KEY, JSON.stringify({ sleep: 49, work: 40, learn: 8, train: 5, eat: 11, social: 12, scroll: 10, buffer: 33 }));
+      localStorage.setItem(DEMO_SEED_KEY, "1");
+    } catch (_) {}
   }
   // wipe everything back to a blank slate (local + cloud)
   async function resetAll() {
@@ -156,6 +201,10 @@
 
   /* ---------- moods ---------- */
   function setMood(dateISO, entry) { moods[dateISO] = { ...(moods[dateISO] || {}), ...entry }; saveLocal(); pushMood(dateISO, moods[dateISO]); }
+  function clearMood(dateISO) {
+    delete moods[dateISO]; saveLocal();
+    if (mode === "cloud" && client) client.from("moods").delete().eq("date", dateISO).then(() => {}, () => {});
+  }
   const getMood = (dateISO) => moods[dateISO] || null;
   function monthMoods(year, month) {
     const out = {};
@@ -188,7 +237,7 @@
     today, iso, parse, addDays, startOfWeek, dow,
     getHabits, getHabit, addHabit, removeHabit, toggle, isDone, isDue,
     dayScore, dayProgress, weekMatrix, stats, heatmap,
-    setMood, getMood, monthMoods, moodSummary, recent,
+    setMood, clearMood, getMood, monthMoods, moodSummary, recent,
     moodTotal: () => Object.keys(moods).length,
   };
 })();

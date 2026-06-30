@@ -61,7 +61,11 @@
   let user = null;
   let audit = null;
   let weekAnchor = null; // anchor date for the Weekly view (lets you edit past weeks)
+  let calAnchor = null;  // month shown in the mood calendar (lets you edit past months)
+  let calPick = null;    // iso of the calendar day being edited
   const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const DOWN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const prettyDate = (i) => { const d = S.parse(i); return `${DOWN[d.getDay()]}, ${MON[d.getMonth()]} ${d.getDate()}`; };
   const fmtRange = (startISO, endISO) => {
     const a = S.parse(startISO), b = S.parse(endISO);
     const f = (d) => MON[d.getMonth()] + " " + d.getDate();
@@ -205,11 +209,10 @@
         const cells = row.map((c) => {
           let bg = "#f1efeb";
           if (c.future) bg = "transparent";
-          else if (c.done) bg = cs(h.color);
+          else if (c.done) bg = cv(h.color);
           else if (c.due) bg = "#eceae5";
-          // emphasize done with full color
-          if (c.done) bg = cv(h.color);
-          return `<div class="heat-cell" style="background:${bg}"></div>`;
+          const tap = !c.future && c.due ? ` data-toggle="${h.id}" data-iso="${c.iso}"` : "";
+          return `<div class="heat-cell${tap ? " tap" : ""}" style="background:${bg}"${tap}></div>`;
         }).join("");
         return `<div class="heat-line">${cells}</div>`;
       }).join("");
@@ -334,24 +337,43 @@
       </div>
     </div>`;
 
-    // calendar (current month, Sunday-first to match the ref)
+    // calendar — navigable month, tap any day to set/edit its mood
     const now = S.parse(t);
-    const year = now.getFullYear(), month = now.getMonth();
-    const startPad = new Date(year, month, 1).getDay();
-    const dim = new Date(year, month + 1, 0).getDate();
-    let cal = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => `<span class="cal-h">${d}</span>`).join("");
-    for (let i = 0; i < startPad; i++) cal += `<span class="cal-cell"></span>`;
+    const calBase = S.parse(calAnchor || t);
+    const cy = calBase.getFullYear(), cm = calBase.getMonth();
+    const startPad = new Date(cy, cm, 1).getDay();
+    const dim = new Date(cy, cm + 1, 0).getDate();
+    const isThisMonth = cy === now.getFullYear() && cm === now.getMonth();
+    let cal = DOWN.map((d) => `<span class="cal-h">${d}</span>`).join("");
+    for (let i = 0; i < startPad; i++) cal += `<span class="cal-cell pad"></span>`;
     for (let d = 1; d <= dim; d++) {
-      const iso = S.iso(new Date(year, month, d));
+      const iso = S.iso(new Date(cy, cm, d));
       const m = S.getMood(iso);
       const isToday = iso === t;
-      cal += `<span class="cal-cell ${isToday ? "today" : ""}">${m && m.key
+      const future = iso > t;
+      cal += `<button class="cal-cell ${isToday ? "today" : ""} ${calPick === iso ? "picking" : ""}" ${future ? "disabled" : `data-day="${iso}"`}>${m && m.key
         ? `<span class="cal-face" style="background:${cs(moodOf(m.key).color)}">${faceSVG(m.key)}</span>`
-        : `<span class="cal-num">${d}</span>`}</span>`;
+        : `<span class="cal-num">${d}</span>`}</button>`;
+    }
+    const calNav = `<div class="cal-nav">
+      <button class="wn-btn" data-cal="-1" aria-label="Previous month">‹</button>
+      <span class="wn-range">${MON[cm]} ${cy}</span>
+      <button class="wn-btn" data-cal="1" aria-label="Next month" ${isThisMonth ? "disabled" : ""}>›</button>
+    </div>`;
+    let pickHTML = "";
+    if (calPick) {
+      const pm = S.getMood(calPick);
+      pickHTML = `<div class="cal-pick">
+        <div class="cal-pick-date">${prettyDate(calPick)}</div>
+        <div class="cal-pick-faces">
+          ${MOODS.map((mm) => `<button class="cal-pf ${pm && pm.key === mm.key ? "sel" : ""}" data-setday="${calPick}" data-key="${mm.key}" style="background:${cs(mm.color)}">${faceSVG(mm.key)}</button>`).join("")}
+          ${pm && pm.key ? `<button class="cal-pf clear" data-setday="${calPick}" data-key="" aria-label="Clear">✕</button>` : ""}
+        </div>
+      </div>`;
     }
 
-    // monthly mood summary (the lower "calendar" screen)
-    const sum = S.moodSummary(year, month);
+    // monthly mood summary (reflects the month being viewed)
+    const sum = S.moodSummary(cy, cm);
     const descs = {
       happy: "You're feeling upbeat and optimistic. Keep up the good vibes.",
       calm: "Steady, calm and grounded. Keep the rhythm going.",
@@ -391,7 +413,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8.5" r="3.5" stroke="currentColor" stroke-width="2"/><path d="M5.5 19c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </button>
       </div>
-      <div class="mood-date">${MONTHS[month]} ${now.getDate()}, ${year}</div>
+      <div class="mood-date">${MONTHS[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}</div>
       <p class="mood-greeting">Hello ${esc(greetName)}! How are<br/>you feeling today?</p>
       <div class="mood-chips">${chips}</div>
       <div class="mood-stats">
@@ -408,7 +430,9 @@
       </div>
       ${quizHTML}
       <div class="section-label">Mood calendar</div>
+      ${calNav}
       <div class="mood-cal">${cal}</div>
+      ${pickHTML}
       ${summaryHTML}`;
     $("#sc-mood").scrollTop = sc;
   }
@@ -458,17 +482,10 @@
     const v = (id) => Number(audit[id]) || 0;
     const total = list.reduce((s, b) => s + v(b.id), 0);
     const rem = 168 - total;
-    const pct = Math.min(100, (total / 168) * 100);
 
-    // 168-cell grid
-    const cells = [];
-    list.forEach((b) => { for (let i = 0; i < v(b.id) && cells.length < 168; i++) cells.push(ACS[b.color] || ACS.gray); });
-    let grid = "";
-    for (let i = 0; i < 168; i++) {
-      grid += i < cells.length
-        ? `<div class="aud-cell" style="background:${cells[i]}"></div>`
-        : `<div class="aud-cell empty"></div>`;
-    }
+    // breakdown bar: one colored segment per activity, remainder = empty track
+    const segs = list.filter((b) => v(b.id) > 0).map((b) =>
+      `<div class="aud-seg" style="width:${Math.min(100, (v(b.id) / 168) * 100)}%;background:${AC[b.color] || AC.gray}" title="${esc(b.label)} ${v(b.id)}h"></div>`).join("");
 
     // every activity: tap the icon to change its emoji, × to remove it
     const rows = list.map((b) =>
@@ -492,9 +509,8 @@
       <div class="aud-meter">
         <div class="aud-meter-head"><span class="aud-total">${total}<span class="aud-den">/168</span></span>
           <span class="aud-rem">${total > 168 ? (total - 168) + "h over" : rem === 0 ? "every hour placed" : rem + "h left"}</span></div>
-        <div class="aud-bar"><div class="aud-fill" style="width:${pct}%;${total > 168 ? "background:var(--coral)" : ""}"></div></div>
+        <div class="aud-stack">${segs}</div>
       </div>
-      <div class="aud-grid">${grid}</div>
       ${rows}
       <div class="aud-add">
         <input id="audNew" type="text" maxlength="22" placeholder="Add your own activity..." aria-label="New activity name" />
@@ -641,6 +657,23 @@
     $("#sc-mood").addEventListener("click", (e) => {
       const m = e.target.closest("[data-mood]");
       if (m) { S.setMood(S.today(), { key: m.dataset.mood }); return renderMood(); }
+      // calendar month navigation
+      const cn = e.target.closest("[data-cal]");
+      if (cn && !cn.disabled) {
+        const base = S.parse(calAnchor || S.today());
+        calAnchor = S.iso(new Date(base.getFullYear(), base.getMonth() + Number(cn.dataset.cal), 1));
+        calPick = null; return renderMood();
+      }
+      // tap a day to open its mood picker
+      const day = e.target.closest("[data-day]");
+      if (day) { calPick = calPick === day.dataset.day ? null : day.dataset.day; return renderMood(); }
+      // pick (or clear) a mood for the chosen day
+      const sd = e.target.closest("[data-setday]");
+      if (sd) {
+        const iso = sd.dataset.setday;
+        if (sd.dataset.key) S.setMood(iso, { key: sd.dataset.key }); else S.clearMood(iso);
+        calPick = null; return renderMood();
+      }
       if (e.target.closest("[data-go-profile]")) {
         document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === "profile"));
         return go("profile");
