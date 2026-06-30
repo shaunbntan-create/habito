@@ -7,6 +7,7 @@
 (function () {
   const HKEY = "habito.habits.v1";
   const MKEY = "habito.moods.v1";
+  const NKEY = "habito.name.v1";
 
   /* ---------- date helpers ---------- */
   const pad = (n) => String(n).padStart(2, "0");
@@ -71,6 +72,12 @@
   /* ---------- load (called on sign-in) ---------- */
   async function load(user) {
     client = (window.Auth && window.Auth.client) || null;
+    // pull a saved display name down from the account on a fresh device
+    try {
+      const md = user && user.user_metadata;
+      const cloudName = md && (md.display_name || md.name);
+      if (cloudName && !localStorage.getItem(NKEY)) localStorage.setItem(NKEY, cloudName);
+    } catch (_) {}
     if (client && user && !user.demo) { mode = "cloud"; await loadCloud(); }
     else { mode = "local"; loadLocal(); }
   }
@@ -194,11 +201,20 @@
     return out;
   }
 
+  /* ---------- display name ---------- */
+  const getName = () => { try { return localStorage.getItem(NKEY) || ""; } catch (_) { return ""; } };
+  function setName(name) {
+    name = (name || "").trim();
+    try { name ? localStorage.setItem(NKEY, name) : localStorage.removeItem(NKEY); } catch (_) {}
+    if (mode === "cloud" && client) { try { client.auth.updateUser({ data: { display_name: name } }); } catch (_) {} }
+  }
+
   window.Store = {
-    load, mode: () => mode, isNew,
+    load, mode: () => mode, isNew, getName, setName,
     today, iso, parse, addDays, startOfWeek, dow,
     getHabits, getHabit, addHabit, removeHabit, toggle, isDone, isDue,
     dayScore, dayProgress, weekMatrix, stats, heatmap,
     setMood, getMood, monthMoods, moodSummary, recent,
+    moodTotal: () => Object.keys(moods).length,
   };
 })();

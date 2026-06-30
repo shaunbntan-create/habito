@@ -36,6 +36,11 @@
   ];
   const AC  = { blue: "#7dbaf6", purple: "#c7a4e8", green: "#8fd96a", coral: "#f77e72", yellow: "#fbcb4d", pink: "#f58bc0", peach: "#f9b58a", gray: "#bcb8b0" };
   const ACS = { blue: "#c6def9", purple: "#e2cef4", green: "#cdefb1", coral: "#f9bbb2", yellow: "#fae7a8", pink: "#f8c9e0", peach: "#f6d9c4", gray: "#e6e3dd" };
+  // user-added activity buckets (id, label, emoji, color, custom)
+  const AUDIT_CUST_KEY = "habito.auditCust.v1";
+  const AUDIT_EMOJIS = ["✨", "🎨", "🎸", "📷", "🧹", "🚗", "🛒", "🐶", "📞", "🎮", "🧺", "🎧"];
+  const AUDIT_COLORS = ["blue", "purple", "green", "coral", "yellow", "pink", "peach", "gray"];
+  let customBuckets = null;
 
   let habitTab = "today";
   let user = null;
@@ -192,21 +197,32 @@
   function renderProfile() {
     const st = S.stats();
     const who = user && user.email ? user.email : "you";
-    const name = user && user.name ? user.name : "Habito friend";
+    const name = S.getName();
     $("#sc-profile").innerHTML = `
       <h2 class="scr-title">Profile</h2>
-      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;margin:10px 0 26px">
-        <div style="width:88px;height:88px;border-radius:50%;background:linear-gradient(135deg,var(--pink-soft),var(--blue-soft));display:grid;place-items:center;font-size:40px;box-shadow:var(--shadow-card)">🙂</div>
-        <div style="font-family:var(--font-display);font-weight:600;font-size:20px">${esc(name)}</div>
-        <div style="color:var(--ink-soft);font-size:13px">${esc(who)}</div>
+      <div class="profile-head">
+        <div class="profile-avatar">🙂</div>
+        <input id="profileName" class="profile-name-input" type="text" maxlength="40"
+          placeholder="Add your name" value="${esc(name)}" aria-label="Your name" />
+        <div class="profile-email">${esc(who)}</div>
       </div>
-      <div class="stat-grid">
-        <div class="stat-card"><div class="stat-lbl">Current streak</div><div class="stat-val">${st.current} days</div></div>
-        <div class="stat-card"><div class="stat-lbl">Success rate</div><div class="stat-val">${st.success}%</div></div>
-      </div>
+      <div class="stat-grid">${[
+        ["Current streak", `${st.current} days`],
+        ["Success rate", `${st.success}%`],
+        ["Best streak", `${st.best} days`],
+        ["Completions", `${st.completed}`],
+        ["Habits", `${S.getHabits().length}`],
+        ["Mood check-ins", `${S.moodTotal()}`],
+      ].map(([l, val]) => `<div class="stat-card"><div class="stat-lbl">${l}</div><div class="stat-val">${val}</div></div>`).join("")}</div>
       <button class="btn-ghost" id="profileReplay" style="width:100%;margin-bottom:10px">Replay tutorial</button>
-      <button class="btn-ghost" id="profileSignOut" style="width:100%">Sign out</button>
-      <p style="text-align:center;color:var(--ink-faint);font-size:12px;margin-top:20px">${Auth.hasKeys ? "Signed in with Supabase" : "Local demo mode"}</p>`;
+      <button class="btn-ghost" id="profileSignOut" style="width:100%">Sign out</button>`;
+    const nm = $("#profileName");
+    if (nm) {
+      const save = () => S.setName(nm.value);
+      nm.addEventListener("change", save);
+      nm.addEventListener("blur", save);
+      nm.addEventListener("keydown", (e) => { if (e.key === "Enter") nm.blur(); });
+    }
     const rp = $("#profileReplay");
     if (rp) rp.addEventListener("click", () => openTutorial());
     const so = $("#profileSignOut");
@@ -214,35 +230,66 @@
   }
 
   /* ---------------- MOOD ---------------- */
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  // daily check-in: simple yes/no questions that actually log today's
+  // sleep / stress / mood, so the cards above are functional.
+  const QUIZ = [
+    { q: "Did you sleep well last night?", yes: { sleep: 8 }, no: { sleep: 5.5 } },
+    { q: "Do you feel calm and in control today?", yes: { stress: "Low" }, no: { stress: "High" } },
+    { q: "Have you moved your body today?", yes: { key: "happy" }, no: { key: "sleepy" } },
+    { q: "Did you connect with someone you care about?", yes: { key: "calm" }, no: { key: "anxious" } },
+  ];
+  const quizKey = () => "habito.quiz." + S.today();
+  const getQuizN = () => { try { return Number(localStorage.getItem(quizKey())) || 0; } catch (_) { return 0; } };
+  const setQuizN = (n) => { try { localStorage.setItem(quizKey(), String(n)); } catch (_) {} };
+
   function renderMood() {
     const t = S.today();
     const todays = S.getMood(t);
+    const nm = S.getName();
+    const greetName = nm || "there";
 
     const chips = MOODS.map((m) =>
-      `<button class="mood-chip ${todays && todays.key === m.key ? "sel" : ""}" data-mood="${m.key}" style="background:${cs(m.color)}">
-         <span class="mc-face">${m.emoji}</span><span class="mc-lbl">${m.label}</span>
+      `<button class="mood-chip ${todays && todays.key === m.key ? "sel" : ""}" data-mood="${m.key}">
+         <span class="mc-face" style="background:${cs(m.color)}">${m.emoji}</span><span class="mc-lbl">${m.label}</span>
        </button>`).join("");
 
-    // sleep
-    const sleeps = S.recent("sleep", 10);
-    const sleepBars = sleeps.map((d) => `<div class="mini-bar" style="height:${d.val ? Math.max(10, (d.val / 9) * 100) : 6}%"></div>`).join("");
+    // sleep (functional: from logged daily check-ins)
+    const sleeps = S.recent("sleep", 12);
+    const sleepBars = sleeps.map((d) => `<div class="mini-bar" style="height:${d.val ? Math.max(12, (d.val / 9) * 100) : 8}%"></div>`).join("");
     const lastSleep = [...sleeps].reverse().find((d) => d.val != null);
     const sh = lastSleep ? lastSleep.val : 0;
     const sleepVal = lastSleep ? `${Math.floor(sh)}h ${Math.round((sh - Math.floor(sh)) * 60)}min` : "—";
 
     // stress
     const sMap = { Low: 1, Mid: 2, High: 3 };
-    const stresses = S.recent("stress", 10);
-    const stressBars = stresses.map((d) => `<div class="mini-bar" style="height:${d.val ? (sMap[d.val] / 3) * 100 : 6}%"></div>`).join("");
+    const stresses = S.recent("stress", 12);
+    const stressBars = stresses.map((d) => `<div class="mini-bar" style="height:${d.val ? (sMap[d.val] / 3) * 100 : 8}%"></div>`).join("");
     const lastStress = [...stresses].reverse().find((d) => d.val != null);
     const stressVal = lastStress ? lastStress.val : "—";
+
+    // daily check-in quiz (drives the sleep/stress/mood above)
+    const qn = getQuizN();
+    let quizHTML;
+    if (qn >= QUIZ.length) {
+      quizHTML = `<div class="quiz-card">
+        <div class="quiz-head"><span class="quiz-title">Daily check-in</span><span class="quiz-prog">Done ✓</span></div>
+        <p class="quiz-q">All checked in for today. Your sleep, stress and mood above are up to date.</p>
+      </div>`;
+    } else {
+      quizHTML = `<div class="quiz-card">
+        <div class="quiz-head"><span class="quiz-title">Daily check-in</span><span class="quiz-prog">Question ${qn + 1}/${QUIZ.length}</span></div>
+        <p class="quiz-q">${QUIZ[qn].q}</p>
+        <div class="quiz-actions"><button class="quiz-btn" data-quiz="yes">Yes</button><button class="quiz-btn" data-quiz="no">No</button></div>
+      </div>`;
+    }
 
     // calendar (current month, Sunday-first to match the ref)
     const now = S.parse(t);
     const year = now.getFullYear(), month = now.getMonth();
     const startPad = new Date(year, month, 1).getDay();
     const dim = new Date(year, month + 1, 0).getDate();
-    let cal = ["S", "M", "T", "W", "T", "F", "S"].map((d) => `<span class="cal-h">${d}</span>`).join("");
+    let cal = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => `<span class="cal-h">${d}</span>`).join("");
     for (let i = 0; i < startPad; i++) cal += `<span class="cal-cell"></span>`;
     for (let d = 1; d <= dim; d++) {
       const iso = S.iso(new Date(year, month, d));
@@ -253,51 +300,63 @@
         : `<span class="cal-num">${d}</span>`}</span>`;
     }
 
-    // summary
+    // monthly mood summary (the lower "calendar" screen)
     const sum = S.moodSummary(year, month);
     const descs = {
-      happy: "You're riding a good wave. Bank it.",
-      calm: "Steady and grounded. Keep the rhythm.",
-      sleepy: "Running low on rest. Guard your sleep.",
-      anxious: "A heavier stretch. Be kind to yourself.",
-      sad: "Some low days. They pass, keep checking in.",
-      angry: "Lots of friction lately. Name it, move it.",
+      happy: "You're feeling upbeat and optimistic. Keep up the good vibes.",
+      calm: "Steady, calm and grounded. Keep the rhythm going.",
+      sleepy: "Running a little low on rest. Guard your sleep.",
+      anxious: "A heavier stretch lately. Be kind to yourself.",
+      sad: "Some low days in the mix. They pass, keep checking in.",
+      angry: "Lots of friction lately. Name it, then move it.",
     };
+    const msStats = (c, calm, happy) => `<div class="ms-stats">
+      <div class="ms-stat"><span class="ms-k">Check-ins</span><b>${c}</b><span class="ms-u">this month</span></div>
+      <div class="ms-stat"><span class="ms-k">Calm</span><b>${calm}</b><span class="ms-u">days</span></div>
+      <div class="ms-stat"><span class="ms-k">Happy</span><b>${happy}</b><span class="ms-u">days</span></div>
+    </div>`;
     let summaryHTML;
     if (!sum.count) {
       summaryHTML = `<div class="mood-summary">
-        <div class="ms-top"><span class="ms-emoji">🌤️</span><span class="ms-title">How are you?</span></div>
+        <div class="ms-label">Monthly mood summary</div>
+        <div class="ms-top"><span class="ms-title">How are you?</span><span class="ms-emoji">🌤️</span></div>
         <div class="ms-desc">Tap a mood above to log your first check-in. Your month fills in from there.</div>
+        ${msStats(0, 0, 0)}
       </div>`;
     } else {
       const top = moodOf(sum.top) || moodOf("calm");
       summaryHTML = `<div class="mood-summary">
-        <div class="ms-top"><span class="ms-emoji">${top.emoji}</span><span class="ms-title">${top.label}</span></div>
+        <div class="ms-label">Monthly mood summary</div>
+        <div class="ms-top"><span class="ms-title">${top.label}</span><span class="ms-emoji">${top.emoji}</span></div>
         <div class="ms-desc">${descs[top.key] || ""}</div>
-        <div class="ms-stats">
-          <div class="ms-stat"><b>${sum.count}</b><span>Check-ins</span></div>
-          <div class="ms-stat"><b>${sum.tally.calm || 0}</b><span>Calm days</span></div>
-          <div class="ms-stat"><b>${sum.tally.happy || 0}</b><span>Happy days</span></div>
-        </div>
+        ${msStats(sum.count, sum.tally.calm || 0, sum.tally.happy || 0)}
       </div>`;
     }
 
     $("#sc-mood").innerHTML = `
-      <h2 class="scr-title">Mood</h2>
-      <p class="mood-greeting">How are you<br/>feeling today?</p>
+      <div class="mood-header">
+        <div class="mh-avatar">🙂</div>
+        <div class="mh-text"><div class="mh-hello">Welcome back</div><div class="mh-name">${esc(nm || "friend")}</div></div>
+        <button class="mh-btn" data-go-profile aria-label="Profile">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8.5" r="3.5" stroke="currentColor" stroke-width="2"/><path d="M5.5 19c0-3.3 2.9-5.5 6.5-5.5s6.5 2.2 6.5 5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="mood-date">${MONTHS[month]} ${now.getDate()}, ${year}</div>
+      <p class="mood-greeting">Hello ${esc(greetName)}! How are<br/>you feeling today?</p>
       <div class="mood-chips">${chips}</div>
       <div class="mood-stats">
         <div class="mstat sleep">
-          <div class="mstat-lbl">Sleep duration</div>
-          <div class="mstat-val">${sleepVal}</div>
+          <div class="mstat-lbl">😴 Sleep duration</div>
           <div class="mini-bars">${sleepBars}</div>
+          <div class="mstat-val">${sleepVal}</div>
         </div>
         <div class="mstat stress">
-          <div class="mstat-lbl">Stress indicator</div>
-          <div class="mstat-val">${stressVal}</div>
+          <div class="mstat-lbl">😣 Stress indicator</div>
           <div class="mini-bars">${stressBars}</div>
+          <div class="mstat-val">${stressVal}</div>
         </div>
       </div>
+      ${quizHTML}
       <div class="section-label">Mood calendar</div>
       <div class="mood-cal">${cal}</div>
       ${summaryHTML}`;
@@ -307,17 +366,51 @@
     const o = {}; AUDIT_BUCKETS.forEach((b) => (o[b.id] = b.def)); return o;
   }
   const saveAudit = () => localStorage.setItem(AUDIT_KEY, JSON.stringify(audit));
+  function getCustom() {
+    if (customBuckets) return customBuckets;
+    try { customBuckets = JSON.parse(localStorage.getItem(AUDIT_CUST_KEY)) || []; } catch (_) { customBuckets = []; }
+    return customBuckets;
+  }
+  const saveCustom = () => { try { localStorage.setItem(AUDIT_CUST_KEY, JSON.stringify(customBuckets || [])); } catch (_) {} };
+  const allBuckets = () => AUDIT_BUCKETS.concat(getCustom());
+
+  // "The truth" — build every insight that is currently TRUE, then rotate the
+  // window day to day so different real observations surface over time.
+  function buildTruth(v, total, rem) {
+    const all = [];
+    if (total > 168) all.push(["⚠️", `You've allocated <b>${total}h</b>. A week only holds 168.`]);
+    else if (rem >= 8) all.push(["🕳️", `<b>${rem}h</b> unaccounted. That's where the week quietly leaks.`]);
+    else if (rem > 0) all.push(["✅", `Only <b>${rem}h</b> left to place. The week is almost fully mapped.`]);
+    const spn = v("sleep") / 7;
+    if (v("sleep") && spn < 7) all.push(["😴", `That's <b>${spn.toFixed(1)}h</b> of sleep a night. Below 7 makes the rest cost more.`]);
+    else if (spn >= 7.5) all.push(["🌙", `<b>${spn.toFixed(1)}h</b> of sleep a night. That's the foundation everything else stands on.`]);
+    if (v("scroll") && v("scroll") > v("learn")) all.push(["📱", `You scroll <b>${v("scroll")}h</b> but learn <b>${v("learn")}h</b>. The feed is winning.`]);
+    if (v("scroll") >= 14) all.push(["⏳", `<b>${v("scroll")}h</b> scrolling a week is about <b>${Math.round((v("scroll") * 52) / 24)}</b> full days a year.`]);
+    if (v("train") === 0) all.push(["🏋️", `Zero training hours. The asset that compounds for 50 years got nothing.`]);
+    else if (v("train") >= 3) all.push(["💪", `<b>${v("train")}h</b> training. The one asset that pays off for decades is getting fed.`]);
+    if (v("work")) all.push(["💻", `<b>${v("work")}h</b> of deep work. Protect it, that's the block that moves things.`]);
+    if (v("learn") >= 7) all.push(["📚", `<b>${v("learn")}h</b> learning. Small and weekly is how skills quietly compound.`]);
+    if (v("social") === 0) all.push(["👥", `No social hours booked. Relationships are a habit too, schedule one.`]);
+    if (v("eat") && v("eat") < 7) all.push(["🍳", `Only <b>${v("eat")}h</b> for eating all week. Fuel is not the place to cut corners.`]);
+    if (all.length <= 4) return all;
+    const d = new Date();
+    const off = (d.getDate() + d.getDay()) % all.length;
+    const out = [];
+    for (let i = 0; i < 4; i++) out.push(all[(off + i) % all.length]);
+    return out;
+  }
 
   function renderTime() {
     audit = audit || getAudit();
+    const buckets = allBuckets();
     const v = (id) => Number(audit[id]) || 0;
-    const total = AUDIT_BUCKETS.reduce((s, b) => s + v(b.id), 0);
+    const total = buckets.reduce((s, b) => s + v(b.id), 0);
     const rem = 168 - total;
     const pct = Math.min(100, (total / 168) * 100);
 
     // 168-cell grid
     const cells = [];
-    AUDIT_BUCKETS.forEach((b) => { for (let i = 0; i < v(b.id) && cells.length < 168; i++) cells.push(ACS[b.color]); });
+    buckets.forEach((b) => { for (let i = 0; i < v(b.id) && cells.length < 168; i++) cells.push(ACS[b.color] || ACS.gray); });
     let grid = "";
     for (let i = 0; i < 168; i++) {
       grid += i < cells.length
@@ -325,27 +418,19 @@
         : `<div class="aud-cell empty"></div>`;
     }
 
-    const rows = AUDIT_BUCKETS.map((b) =>
+    const rows = buckets.map((b) =>
       `<div class="aud-row">
-         <span class="aud-sw" style="background:${ACS[b.color]}">${b.emoji}</span>
-         <span class="aud-name">${b.label}</span>
+         <span class="aud-sw" style="background:${ACS[b.color] || ACS.gray}">${b.emoji}</span>
+         <span class="aud-name">${esc(b.label)}</span>
          <span class="aud-step">
-           <button data-aud="dec" data-id="${b.id}" aria-label="less ${b.label}">−</button>
+           <button data-aud="dec" data-id="${b.id}" aria-label="less ${esc(b.label)}">−</button>
            <span class="aud-val">${v(b.id)}</span>
-           <button data-aud="inc" data-id="${b.id}" aria-label="more ${b.label}">+</button>
+           <button data-aud="inc" data-id="${b.id}" aria-label="more ${esc(b.label)}">+</button>
+           ${b.custom ? `<button class="aud-del" data-aud="del" data-id="${b.id}" aria-label="remove ${esc(b.label)}">×</button>` : ""}
          </span>
        </div>`).join("");
 
-    // the truth
-    const ins = [];
-    if (total > 168) ins.push(["⚠️", `You've allocated <b>${total}h</b>. A week only holds 168.`]);
-    else if (rem >= 8) ins.push(["🕳️", `<b>${rem}h</b> unaccounted. That's where the week quietly leaks.`]);
-    const spn = v("sleep") / 7;
-    if (v("sleep") && spn < 7) ins.push(["😴", `That's <b>${spn.toFixed(1)}h</b> of sleep a night. Below 7 makes the rest cost more.`]);
-    if (v("scroll") > v("learn")) ins.push(["📱", `You scroll <b>${v("scroll")}h</b> but learn <b>${v("learn")}h</b>. The feed is winning.`]);
-    if (v("train") === 0) ins.push(["🏋️", `Zero training hours. The asset that compounds for 50 years got nothing.`]);
-    if (v("work")) ins.push(["💻", `<b>${v("work")}h</b> of deep work. Protect it, that's the block that moves things.`]);
-    const truth = ins.slice(0, 4).map(([d, h]) => `<div class="aud-ins"><span>${d}</span><span>${h}</span></div>`).join("");
+    const truth = buildTruth(v, total, rem).map(([d, h]) => `<div class="aud-ins"><span>${d}</span><span>${h}</span></div>`).join("");
 
     $("#sc-time").innerHTML = `
       <h2 class="scr-title">The 168 Audit</h2>
@@ -357,23 +442,38 @@
       </div>
       <div class="aud-grid">${grid}</div>
       ${rows}
+      <div class="aud-add">
+        <input id="audNew" type="text" maxlength="22" placeholder="Add your own activity..." aria-label="New activity name" />
+        <button class="aud-add-btn" data-aud="add">Add</button>
+      </div>
       <div class="section-label" style="margin-top:22px">The truth</div>
       <div class="aud-truth">${truth}</div>`;
   }
 
   /* ---------------- onboarding tutorial ---------------- */
   const ONBOARD_KEY = "habito.onboarded.v1";
+  // Each step drives the real app to a section (tab + optional habits subview)
+  // so the tour walks through the live screens one by one.
   const TUTORIAL = [
-    { emoji: "👋", title: "Welcome to Habito", body: "Build the days you want, one square at a time. Quick 20-second tour." },
-    { emoji: "🎯", title: "Today", body: "Your habits sit in a ring around a live daily score. Tap one to check it off for today." },
-    { emoji: "🗓️", title: "Weekly", body: "Tap the Mon to Sun circles to mark each habit done. Every habit has its own colour." },
-    { emoji: "🔥", title: "Overall", body: "Watch your streak, success rate and a contribution heatmap grow for every habit." },
-    { emoji: "🌤️", title: "Mood", body: "Check in on how you feel, track sleep and stress, and fill in your mood calendar." },
-    { emoji: "⏳", title: "The 168 Audit", body: "You get 168 hours a week. Pour them into buckets and see where they actually go." },
-    { emoji: "➕", title: "Add your first habit", body: "Tap the pink + button any time to add a habit. That's it, you're set." },
+    { emoji: "👋", title: "Welcome to Habito", body: "A tiny home for your habits, your mood and your week. Here's a quick guided tour, tap Next to walk through each part one by one.", tab: "habits", seg: "today" },
+    { emoji: "🎯", title: "1. Today", body: "Your day at a glance. Each habit is a bubble around the ring, and the big number in the middle is your live score out of 10. Tap a bubble to check that habit off for today.", tab: "habits", seg: "today" },
+    { emoji: "🗓️", title: "2. Weekly", body: "Every habit gets a row of seven circles, Monday to Sunday. Tap a circle to mark a day done, so you can see your whole week at a glance.", tab: "habits", seg: "weekly" },
+    { emoji: "🔥", title: "3. Overall", body: "Your long game lives here. Current streak, success rate, and a colour heatmap for each habit that fills in the more you show up.", tab: "habits", seg: "overall" },
+    { emoji: "🌤️", title: "4. Mood", body: "Check in on how you feel each day, log your sleep and stress, and watch your mood calendar fill in across the month.", tab: "mood" },
+    { emoji: "⏳", title: "5. The 168 Audit", body: "You get 168 hours a week. Pour them into buckets like sleep, work and training, then read the honest truth about where your time really goes.", tab: "time" },
+    { emoji: "🙂", title: "6. Profile", body: "Add your name so the app feels like yours, see your headline stats, and replay this tour any time.", tab: "profile" },
+    { emoji: "➕", title: "You're all set", body: "Everything starts empty, this is your blank page. Tap the pink + button to add your very first habit whenever you're ready.", tab: "habits", seg: "today" },
   ];
   let tutStep = 0;
   const tutEl = () => document.getElementById("tutorial");
+  // drive the live app to the section this step is describing
+  function applyStep() {
+    const s = TUTORIAL[tutStep];
+    if (!s.tab) return;
+    if (s.seg) habitTab = s.seg;
+    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === s.tab));
+    go(s.tab);
+  }
   function renderTutorial() {
     const s = TUTORIAL[tutStep];
     const last = tutStep === TUTORIAL.length - 1;
@@ -391,15 +491,21 @@
         </div>
       </div>`;
   }
-  function openTutorial() { tutStep = 0; tutEl().hidden = false; renderTutorial(); }
-  function closeTutorial() { tutEl().hidden = true; try { localStorage.setItem(ONBOARD_KEY, "1"); } catch (_) {} }
+  function openTutorial() { tutStep = 0; tutEl().hidden = false; applyStep(); renderTutorial(); }
+  function closeTutorial() {
+    tutEl().hidden = true;
+    try { localStorage.setItem(ONBOARD_KEY, "1"); } catch (_) {}
+    habitTab = "today";
+    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === "habits"));
+    go("habits");
+  }
   function maybeTutorial() { let seen = false; try { seen = !!localStorage.getItem(ONBOARD_KEY); } catch (_) {} if (!seen) openTutorial(); }
   function wireTutorial() {
     tutEl().addEventListener("click", (e) => {
       const b = e.target.closest("[data-tut]"); if (!b) return;
       if (b.dataset.tut === "skip") return closeTutorial();
-      if (tutStep === TUTORIAL.length - 1) closeTutorial();
-      else { tutStep++; renderTutorial(); }
+      if (tutStep === TUTORIAL.length - 1) return closeTutorial();
+      tutStep++; applyStep(); renderTutorial();
     });
   }
 
@@ -477,20 +583,51 @@
   function wireMood() {
     $("#sc-mood").addEventListener("click", (e) => {
       const m = e.target.closest("[data-mood]");
-      if (m) { S.setMood(S.today(), { key: m.dataset.mood }); renderMood(); }
+      if (m) { S.setMood(S.today(), { key: m.dataset.mood }); return renderMood(); }
+      const q = e.target.closest("[data-quiz]");
+      if (q) {
+        const qn = getQuizN(); if (qn >= QUIZ.length) return;
+        S.setMood(S.today(), q.dataset.quiz === "yes" ? QUIZ[qn].yes : QUIZ[qn].no);
+        setQuizN(qn + 1); return renderMood();
+      }
+      if (e.target.closest("[data-go-profile]")) {
+        document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === "profile"));
+        return go("profile");
+      }
     });
   }
 
+  function addActivity() {
+    const inp = $("#audNew");
+    const label = ((inp && inp.value) || "").trim();
+    if (!label) { if (inp) inp.focus(); return; }
+    const list = getCustom();
+    const id = "c_" + Math.random().toString(36).slice(2, 8);
+    list.push({ id, label, emoji: AUDIT_EMOJIS[list.length % AUDIT_EMOJIS.length], color: AUDIT_COLORS[list.length % AUDIT_COLORS.length], custom: true });
+    saveCustom();
+    audit = audit || getAudit();
+    audit[id] = 0; saveAudit();
+    renderTime();
+  }
   function wireTime() {
     $("#sc-time").addEventListener("click", (e) => {
       const btn = e.target.closest("[data-aud]");
       if (!btn) return;
+      const act = btn.dataset.aud;
       audit = audit || getAudit();
+      if (act === "add") return addActivity();
       const id = btn.dataset.id;
-      const next = (Number(audit[id]) || 0) + (btn.dataset.aud === "inc" ? 1 : -1);
+      if (act === "del") {
+        customBuckets = getCustom().filter((b) => b.id !== id); saveCustom();
+        delete audit[id]; saveAudit(); renderTime(); return;
+      }
+      const next = (Number(audit[id]) || 0) + (act === "inc" ? 1 : -1);
       audit[id] = Math.max(0, Math.min(168, next));
       saveAudit();
       renderTime();
+    });
+    $("#sc-time").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e.target && e.target.id === "audNew") { e.preventDefault(); addActivity(); }
     });
   }
 
