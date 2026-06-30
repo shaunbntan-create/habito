@@ -17,6 +17,7 @@
   const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
   const dow = (s) => (parse(s).getDay() + 6) % 7; // Mon=0..Sun=6
   const startOfWeek = (s) => addDays(s, -dow(s));
+  const weekIndex = (s) => Math.floor(parse(startOfWeek(s)).getTime() / (7 * 864e5));
 
   const rid = () => "h_" + Math.random().toString(36).slice(2, 10);
 
@@ -29,10 +30,10 @@
 
   /* ---------- habit due logic ---------- */
   function isDue(h, d) {
-    if (h.freq === "Everyday") return true;
-    if (h.freq === "5 days per week") return dow(d) < 5;
+    if (h.freq === "Weekdays") return dow(d) < 5;
     if (h.freq === "Weekends") return dow(d) >= 5;
-    return true;
+    if (h.freq === "Every other week") return weekIndex(d) % 2 === 0;
+    return true; // "Every day" (default) — all 7 days tickable
   }
 
   /* ---------- load (called on sign-in) ---------- */

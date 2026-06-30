@@ -336,6 +336,7 @@
       quizHTML = `<div class="quiz-card">
         <div class="quiz-head"><span class="quiz-title">Daily check-in</span><span class="quiz-prog">Done ✓</span></div>
         <p class="quiz-q">All checked in for today. Your sleep, stress and mood above are up to date.</p>
+        <div class="quiz-actions"><button class="quiz-btn ghost" data-quiz="redo">Redo check-in</button></div>
       </div>`;
     } else {
       quizHTML = `<div class="quiz-card">
@@ -574,7 +575,7 @@
   }
 
   /* ---------------- add-habit modal ---------------- */
-  let nh = { emoji: "📖", color: "pink", freq: "Everyday" };
+  let nh = { emoji: "📖", color: "pink", freq: "Every day" };
   function buildSwatches() {
     const wrap = $("#nhColor"); if (!wrap) return;
     wrap.innerHTML = COLORS.map((c, i) =>
@@ -652,6 +653,7 @@
       if (m) { S.setMood(S.today(), { key: m.dataset.mood }); return renderMood(); }
       const q = e.target.closest("[data-quiz]");
       if (q) {
+        if (q.dataset.quiz === "redo") { setQuizN(0); return renderMood(); }
         const qn = getQuizN(); if (qn >= QUIZ.length) return;
         S.setMood(S.today(), q.dataset.quiz === "yes" ? QUIZ[qn].yes : QUIZ[qn].no);
         setQuizN(qn + 1); return renderMood();
