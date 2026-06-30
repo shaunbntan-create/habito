@@ -5,24 +5,13 @@
 (function () {
   const $ = (s, r = document) => r.querySelector(s);
 
-  /* ---------- live status-bar clock ---------- */
-  function tickClock() {
-    const el = $(".sb-time");
-    if (!el) return;
-    const d = new Date();
-    let h = d.getHours(), m = String(d.getMinutes()).padStart(2, "0");
-    el.textContent = `${h}:${m}`;
-  }
-
   /* ---------- screen routing ---------- */
-  let booted = false;
   async function showApp(e) {
     const u = e && e.detail;
     if (u && window.Screens) window.Screens.setUser(u);
     if (window.Store) { try { await window.Store.load(u); } catch (_) {} }
     $("#login").hidden = true; $("#app").hidden = false;
-    if (window.Screens && !booted) { window.Screens.go("habits"); booted = true; }
-    else if (window.Screens) window.Screens.go("habits");
+    if (window.Screens) { window.Screens.go("habits"); window.Screens.maybeTutorial(); }
   }
   function showLogin() { $("#app").hidden = true; $("#login").hidden = false; }
 
@@ -68,8 +57,6 @@
 
   /* ---------- boot ---------- */
   document.addEventListener("DOMContentLoaded", () => {
-    tickClock();
-    setInterval(tickClock, 15000);
     wireLogin();
     wireNav();
     if (window.Screens) window.Screens.init();

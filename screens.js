@@ -45,7 +45,20 @@
     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
   /* ---------------- HABITS: header + active subview ---------------- */
+  const addBtn = (label) => `<button class="pill-btn" data-add><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>${label}</button>`;
+
   function renderHabits() {
+    if (!S.getHabits().length) {
+      $("#sc-habits").innerHTML = `
+        <h2 class="scr-title">Habits</h2>
+        <div class="empty">
+          <div class="empty-emoji">🌱</div>
+          <div class="empty-title">No habits yet</div>
+          <div class="empty-body">Add the first habit you want to build. Small and daily beats big and never.</div>
+          ${addBtn("Add your first habit")}
+        </div>`;
+      return;
+    }
     const seg = (id, label) => `<button class="seg ${habitTab === id ? "active" : ""}" data-seg="${id}">${label}</button>`;
     let body = habitTab === "today" ? renderToday() : habitTab === "weekly" ? renderWeekly() : renderOverall();
     $("#sc-habits").innerHTML = `
@@ -191,8 +204,11 @@
         <div class="stat-card"><div class="stat-lbl">Current streak</div><div class="stat-val">${st.current} days</div></div>
         <div class="stat-card"><div class="stat-lbl">Success rate</div><div class="stat-val">${st.success}%</div></div>
       </div>
-      <button class="btn-ghost" id="profileSignOut" style="width:100%;margin-top:8px">Sign out</button>
+      <button class="btn-ghost" id="profileReplay" style="width:100%;margin-bottom:10px">Replay tutorial</button>
+      <button class="btn-ghost" id="profileSignOut" style="width:100%">Sign out</button>
       <p style="text-align:center;color:var(--ink-faint);font-size:12px;margin-top:20px">${Auth.hasKeys ? "Signed in with Supabase" : "Local demo mode"}</p>`;
+    const rp = $("#profileReplay");
+    if (rp) rp.addEventListener("click", () => openTutorial());
     const so = $("#profileSignOut");
     if (so) so.addEventListener("click", () => Auth.signOut());
   }
@@ -211,15 +227,15 @@
     const sleeps = S.recent("sleep", 10);
     const sleepBars = sleeps.map((d) => `<div class="mini-bar" style="height:${d.val ? Math.max(10, (d.val / 9) * 100) : 6}%"></div>`).join("");
     const lastSleep = [...sleeps].reverse().find((d) => d.val != null);
-    const sh = lastSleep ? lastSleep.val : 7.5;
-    const sHr = Math.floor(sh), sMin = Math.round((sh - sHr) * 60);
+    const sh = lastSleep ? lastSleep.val : 0;
+    const sleepVal = lastSleep ? `${Math.floor(sh)}h ${Math.round((sh - Math.floor(sh)) * 60)}min` : "—";
 
     // stress
     const sMap = { Low: 1, Mid: 2, High: 3 };
     const stresses = S.recent("stress", 10);
     const stressBars = stresses.map((d) => `<div class="mini-bar" style="height:${d.val ? (sMap[d.val] / 3) * 100 : 6}%"></div>`).join("");
     const lastStress = [...stresses].reverse().find((d) => d.val != null);
-    const stressLbl = lastStress ? lastStress.val : "Low";
+    const stressVal = lastStress ? lastStress.val : "—";
 
     // calendar (current month, Sunday-first to match the ref)
     const now = S.parse(t);
@@ -239,7 +255,6 @@
 
     // summary
     const sum = S.moodSummary(year, month);
-    const top = sum.top ? moodOf(sum.top) : moodOf("calm");
     const descs = {
       happy: "You're riding a good wave. Bank it.",
       calm: "Steady and grounded. Keep the rhythm.",
@@ -248,26 +263,15 @@
       sad: "Some low days. They pass, keep checking in.",
       angry: "Lots of friction lately. Name it, move it.",
     };
-
-    $("#sc-mood").innerHTML = `
-      <h2 class="scr-title">Mood</h2>
-      <p class="mood-greeting">How are you<br/>feeling today?</p>
-      <div class="mood-chips">${chips}</div>
-      <div class="mood-stats">
-        <div class="mstat sleep">
-          <div class="mstat-lbl">Sleep duration</div>
-          <div class="mstat-val">${sHr}h ${sMin}min</div>
-          <div class="mini-bars">${sleepBars}</div>
-        </div>
-        <div class="mstat stress">
-          <div class="mstat-lbl">Stress indicator</div>
-          <div class="mstat-val">${stressLbl}</div>
-          <div class="mini-bars">${stressBars}</div>
-        </div>
-      </div>
-      <div class="section-label">Mood calendar</div>
-      <div class="mood-cal">${cal}</div>
-      <div class="mood-summary">
+    let summaryHTML;
+    if (!sum.count) {
+      summaryHTML = `<div class="mood-summary">
+        <div class="ms-top"><span class="ms-emoji">🌤️</span><span class="ms-title">How are you?</span></div>
+        <div class="ms-desc">Tap a mood above to log your first check-in. Your month fills in from there.</div>
+      </div>`;
+    } else {
+      const top = moodOf(sum.top) || moodOf("calm");
+      summaryHTML = `<div class="mood-summary">
         <div class="ms-top"><span class="ms-emoji">${top.emoji}</span><span class="ms-title">${top.label}</span></div>
         <div class="ms-desc">${descs[top.key] || ""}</div>
         <div class="ms-stats">
@@ -276,6 +280,27 @@
           <div class="ms-stat"><b>${sum.tally.happy || 0}</b><span>Happy days</span></div>
         </div>
       </div>`;
+    }
+
+    $("#sc-mood").innerHTML = `
+      <h2 class="scr-title">Mood</h2>
+      <p class="mood-greeting">How are you<br/>feeling today?</p>
+      <div class="mood-chips">${chips}</div>
+      <div class="mood-stats">
+        <div class="mstat sleep">
+          <div class="mstat-lbl">Sleep duration</div>
+          <div class="mstat-val">${sleepVal}</div>
+          <div class="mini-bars">${sleepBars}</div>
+        </div>
+        <div class="mstat stress">
+          <div class="mstat-lbl">Stress indicator</div>
+          <div class="mstat-val">${stressVal}</div>
+          <div class="mini-bars">${stressBars}</div>
+        </div>
+      </div>
+      <div class="section-label">Mood calendar</div>
+      <div class="mood-cal">${cal}</div>
+      ${summaryHTML}`;
   }
   function getAudit() {
     try { const v = JSON.parse(localStorage.getItem(AUDIT_KEY)); if (v) return v; } catch (_) {}
@@ -334,6 +359,48 @@
       ${rows}
       <div class="section-label" style="margin-top:22px">The truth</div>
       <div class="aud-truth">${truth}</div>`;
+  }
+
+  /* ---------------- onboarding tutorial ---------------- */
+  const ONBOARD_KEY = "habito.onboarded.v1";
+  const TUTORIAL = [
+    { emoji: "👋", title: "Welcome to Habito", body: "Build the days you want, one square at a time. Quick 20-second tour." },
+    { emoji: "🎯", title: "Today", body: "Your habits sit in a ring around a live daily score. Tap one to check it off for today." },
+    { emoji: "🗓️", title: "Weekly", body: "Tap the Mon to Sun circles to mark each habit done. Every habit has its own colour." },
+    { emoji: "🔥", title: "Overall", body: "Watch your streak, success rate and a contribution heatmap grow for every habit." },
+    { emoji: "🌤️", title: "Mood", body: "Check in on how you feel, track sleep and stress, and fill in your mood calendar." },
+    { emoji: "⏳", title: "The 168 Audit", body: "You get 168 hours a week. Pour them into buckets and see where they actually go." },
+    { emoji: "➕", title: "Add your first habit", body: "Tap the pink + button any time to add a habit. That's it, you're set." },
+  ];
+  let tutStep = 0;
+  const tutEl = () => document.getElementById("tutorial");
+  function renderTutorial() {
+    const s = TUTORIAL[tutStep];
+    const last = tutStep === TUTORIAL.length - 1;
+    const dots = TUTORIAL.map((_, i) => `<span class="tut-dot ${i === tutStep ? "on" : ""}"></span>`).join("");
+    tutEl().innerHTML = `
+      <div class="tut-scrim"></div>
+      <div class="tut-card">
+        <div class="tut-emoji">${s.emoji}</div>
+        <div class="tut-title">${s.title}</div>
+        <div class="tut-body">${s.body}</div>
+        <div class="tut-dots">${dots}</div>
+        <div class="tut-actions">
+          <button class="tut-skip" data-tut="skip">Skip</button>
+          <button class="tut-next" data-tut="next">${last ? "Get started" : "Next"}</button>
+        </div>
+      </div>`;
+  }
+  function openTutorial() { tutStep = 0; tutEl().hidden = false; renderTutorial(); }
+  function closeTutorial() { tutEl().hidden = true; try { localStorage.setItem(ONBOARD_KEY, "1"); } catch (_) {} }
+  function maybeTutorial() { let seen = false; try { seen = !!localStorage.getItem(ONBOARD_KEY); } catch (_) {} if (!seen) openTutorial(); }
+  function wireTutorial() {
+    tutEl().addEventListener("click", (e) => {
+      const b = e.target.closest("[data-tut]"); if (!b) return;
+      if (b.dataset.tut === "skip") return closeTutorial();
+      if (tutStep === TUTORIAL.length - 1) closeTutorial();
+      else { tutStep++; renderTutorial(); }
+    });
   }
 
   /* ---------------- add-habit modal ---------------- */
@@ -427,7 +494,7 @@
     });
   }
 
-  function init() { wireHabits(); wireMood(); wireTime(); wireModal(); }
+  function init() { wireHabits(); wireMood(); wireTime(); wireModal(); wireTutorial(); }
 
-  window.Screens = { init, go, openAdd, setUser: (u) => { user = u; } };
+  window.Screens = { init, go, openAdd, maybeTutorial, openTutorial, setUser: (u) => { user = u; } };
 })();

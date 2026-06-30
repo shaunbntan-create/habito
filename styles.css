@@ -49,7 +49,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* ---------- phone frame ---------- */
+/* ---------- app shell: full-bleed on mobile, clean centered card on desktop ---------- */
 .phone {
   position: relative;
   width: 100%;
@@ -63,39 +63,12 @@ body {
   body { display: grid; place-items: center; padding: 28px 0; }
   .phone {
     width: 402px;
-    height: 858px;
+    height: min(880px, 94vh);
     min-height: 0;
-    border-radius: 56px;
-    border: 13px solid #0e0d0d;
-    box-shadow: var(--shadow-pop), 0 0 0 2px #2a2a2a;
+    border-radius: 30px;
+    box-shadow: 0 24px 70px rgba(40, 30, 50, .20);
   }
 }
-
-/* ---------- status bar ---------- */
-.statusbar {
-  flex: 0 0 auto;
-  height: 50px;
-  padding: 0 30px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-family: var(--font-text);
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--ink);
-  position: relative;
-  z-index: 5;
-}
-.statusbar .sb-right { display: flex; align-items: center; gap: 7px; }
-.statusbar svg { display: block; }
-.notch {
-  position: absolute;
-  top: 11px; left: 50%; transform: translateX(-50%);
-  width: 116px; height: 33px;
-  background: #0e0d0d;
-  border-radius: 0 0 20px 20px;
-}
-@media (max-width: 479px) { .notch { display: none; } }
 
 /* the scrollable screen area */
 .stage { flex: 1 1 auto; position: relative; overflow: hidden; }
@@ -113,6 +86,7 @@ body {
   min-height: 56%;
   background: linear-gradient(180deg, #eaf6ff 0%, #e6f7f3 62%, #eef8f2 100%);
   overflow: hidden;
+  padding-top: env(safe-area-inset-top);
 }
 .wordmark {
   font-family: var(--font-display);
@@ -220,7 +194,7 @@ body {
    =========================================================== */
 #app { display: flex; flex-direction: column; }
 .app-screens { flex: 1 1 auto; position: relative; overflow: hidden; }
-.app-screen { position: absolute; inset: 0; overflow-y: auto; padding: 4px 20px 116px; }
+.app-screen { position: absolute; inset: 0; overflow-y: auto; padding: calc(6px + env(safe-area-inset-top)) 20px 116px; }
 .app-screen::-webkit-scrollbar { width: 0; }
 .app-screen[hidden] { display: none; }
 
@@ -384,3 +358,26 @@ body {
 .sheet-actions { display: flex; gap: 10px; margin-top: 18px; }
 .btn-ghost { flex: 1; height: 52px; border: 1.5px solid var(--line); background: #fff; border-radius: var(--r-pill); font-family: var(--font-text); font-weight: 700; font-size: 15px; cursor: pointer; }
 .btn-solid { flex: 1.4; height: 52px; border: none; background: var(--ink); color: #fff; border-radius: var(--r-pill); font-family: var(--font-text); font-weight: 700; font-size: 15px; cursor: pointer; }
+
+/* ---------- onboarding tutorial ---------- */
+.tut { position: absolute; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.tut-scrim { position: absolute; inset: 0; background: rgba(20, 16, 26, .55); }
+.tut-card { position: relative; width: 100%; max-width: 340px; background: var(--card); border-radius: 26px; padding: 32px 24px 22px; text-align: center; box-shadow: var(--shadow-pop); animation: sheetUp .26s cubic-bezier(.2, .8, .25, 1); }
+.tut-emoji { font-size: 52px; line-height: 1; margin-bottom: 16px; }
+.tut-title { font-family: var(--font-display); font-weight: 600; font-size: 23px; margin-bottom: 10px; }
+.tut-body { color: var(--ink-soft); font-size: 15px; line-height: 1.5; min-height: 68px; }
+.tut-dots { display: flex; gap: 7px; justify-content: center; margin: 18px 0 20px; }
+.tut-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: all .2s ease; }
+.tut-dot.on { background: var(--accent); width: 20px; border-radius: 99px; }
+.tut-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tut-skip { background: none; border: none; cursor: pointer; color: var(--ink-faint); font-family: var(--font-text); font-weight: 600; font-size: 14px; }
+.tut-skip:hover { color: var(--ink-soft); }
+.tut-next { border: none; cursor: pointer; background: var(--ink); color: #fff; border-radius: var(--r-pill); font-family: var(--font-text); font-weight: 700; font-size: 15px; padding: 12px 26px; }
+.tut-next:active { transform: scale(.97); }
+
+/* ---------- empty states ---------- */
+.empty { text-align: center; padding: 52px 24px; }
+.empty-emoji { font-size: 46px; margin-bottom: 14px; }
+.empty-title { font-family: var(--font-display); font-weight: 600; font-size: 19px; margin-bottom: 8px; }
+.empty-body { color: var(--ink-soft); font-size: 14.5px; line-height: 1.5; margin: 0 auto 20px; max-width: 26ch; }
+.empty .pill-btn { max-width: 220px; margin: 0 auto; }

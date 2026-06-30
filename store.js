@@ -83,17 +83,18 @@
   }
   async function loadCloud() {
     try {
+      // Real accounts start BLANK. We never seed sample data into a real user's
+      // account; they build it from scratch (after the onboarding tutorial).
       const { data: hs } = await client.from("habits").select("*").order("created_at");
-      if (hs && hs.length) habits = hs.map((r) => ({ id: r.id, name: r.name, emoji: r.emoji, color: r.color, freq: r.freq, done: r.done || {} }));
-      else { habits = seedHabits(); await client.from("habits").insert(habits.map(stripHabit)); }
-
+      habits = (hs || []).map((r) => ({ id: r.id, name: r.name, emoji: r.emoji, color: r.color, freq: r.freq, done: r.done || {} }));
       const { data: ms } = await client.from("moods").select("*");
       moods = {};
-      if (ms && ms.length) ms.forEach((m) => { moods[m.date] = { key: m.key, sleep: m.sleep, stress: m.stress }; });
-      else { moods = seedMoods(); await client.from("moods").insert(Object.entries(moods).map(([date, m]) => ({ date, ...m }))); }
+      (ms || []).forEach((m) => { moods[m.date] = { key: m.key, sleep: m.sleep, stress: m.stress }; });
       saveLocal();
-    } catch (e) { loadLocal(); } // network hiccup -> fall back to cache
+    } catch (e) { loadLocal(); } // network hiccup -> fall back to cached data
   }
+  // is this a brand-new account with nothing yet? (drives the tutorial + empty states)
+  const isNew = () => habits.length === 0 && Object.keys(moods).length === 0;
 
   /* ---------- write-through ---------- */
   const stripHabit = (h) => ({ id: h.id, name: h.name, emoji: h.emoji, color: h.color, freq: h.freq, done: h.done });
@@ -194,7 +195,7 @@
   }
 
   window.Store = {
-    load, mode: () => mode,
+    load, mode: () => mode, isNew,
     today, iso, parse, addDays, startOfWeek, dow,
     getHabits, getHabit, addHabit, removeHabit, toggle, isDone, isDue,
     dayScore, dayProgress, weekMatrix, stats, heatmap,
