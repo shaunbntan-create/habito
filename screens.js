@@ -7,7 +7,7 @@
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-  const COLORS = ["pink", "blue", "green", "yellow", "purple", "peach"];
+  const COLORS = ["pink", "blue", "green", "yellow", "purple", "peach", "coral"];
   const cv = (k) => `var(--${COLORS.includes(k) ? k : "pink"})`;
   const cs = (k) => `var(--${COLORS.includes(k) ? k : "pink"}-soft)`;
   const DAYS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -22,8 +22,22 @@
   ];
   const moodOf = (k) => MOODS.find((m) => m.key === k);
 
+  // hand-drawn SVG faces (flat, line style) to match the reference look,
+  // instead of OS emoji glyphs. Features only; the colored square is the bg.
+  const FACE = {
+    happy:   `<circle cx="37" cy="44" r="5" fill="#211c18"/><circle cx="63" cy="44" r="5" fill="#211c18"/><path d="M33 56 q17 18 34 0" stroke="#211c18" stroke-width="5" fill="none" stroke-linecap="round"/>`,
+    calm:    `<circle cx="37" cy="47" r="4.6" fill="#211c18"/><circle cx="63" cy="47" r="4.6" fill="#211c18"/><path d="M40 60 q10 7 20 0" stroke="#211c18" stroke-width="4.6" fill="none" stroke-linecap="round"/>`,
+    sleepy:  `<path d="M30 46 q7 5 14 0" stroke="#211c18" stroke-width="4.6" fill="none" stroke-linecap="round"/><path d="M56 46 q7 5 14 0" stroke="#211c18" stroke-width="4.6" fill="none" stroke-linecap="round"/><ellipse cx="50" cy="63" rx="6" ry="7" fill="none" stroke="#211c18" stroke-width="4"/>`,
+    anxious: `<path d="M31 40 q8 -4 14 1" stroke="#211c18" stroke-width="4.4" fill="none" stroke-linecap="round"/><path d="M55 41 q6 -5 14 -1" stroke="#211c18" stroke-width="4.4" fill="none" stroke-linecap="round"/><circle cx="38" cy="51" r="4.4" fill="#211c18"/><circle cx="62" cy="51" r="4.4" fill="#211c18"/><path d="M41 64 q9 -5 18 0" stroke="#211c18" stroke-width="4.4" fill="none" stroke-linecap="round"/>`,
+    sad:     `<circle cx="37" cy="47" r="4.6" fill="#211c18"/><circle cx="63" cy="47" r="4.6" fill="#211c18"/><path d="M41 65 q9 -7 18 0" stroke="#211c18" stroke-width="4.6" fill="none" stroke-linecap="round"/>`,
+    angry:   `<path d="M30 43 l15 4" stroke="#211c18" stroke-width="4.6" fill="none" stroke-linecap="round"/><path d="M70 43 l-15 4" stroke="#211c18" stroke-width="4.6" fill="none" stroke-linecap="round"/><circle cx="38" cy="53" r="4.4" fill="#211c18"/><circle cx="62" cy="53" r="4.4" fill="#211c18"/><path d="M41 65 q9 -6 18 0" stroke="#211c18" stroke-width="4.6" fill="none" stroke-linecap="round"/>`,
+  };
+  const faceSVG = (k) => `<svg class="face-svg" viewBox="22 26 56 56" aria-hidden="true">${FACE[k] || FACE.calm}</svg>`;
+  const ICON_SLEEP = `<svg viewBox="0 0 24 24" width="15" height="15"><path d="M20.5 14.3A8 8 0 1 1 9.7 3.5 6.4 6.4 0 0 0 20.5 14.3z" fill="currentColor"/></svg>`;
+  const ICON_STRESS = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none"><path d="M3 12h3.5l2-6 3.5 12 2.5-7 1.5 3H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
   // ---- 168 Audit ----
-  const AUDIT_KEY = "habito.audit.v1";
+  const AUDIT_KEY = "habito.audit.v2";
   const AUDIT_BUCKETS = [
     { id: "sleep",  label: "Sleep",       emoji: "😴", color: "blue",   def: 49 },
     { id: "work",   label: "Deep work",   emoji: "💻", color: "purple", def: 45 },
@@ -45,6 +59,13 @@
   let habitTab = "today";
   let user = null;
   let audit = null;
+  let weekAnchor = null; // anchor date for the Weekly view (lets you edit past weeks)
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const fmtRange = (startISO, endISO) => {
+    const a = S.parse(startISO), b = S.parse(endISO);
+    const f = (d) => MON[d.getMonth()] + " " + d.getDate();
+    return f(a) + " - " + f(b);
+  };
 
   const check = (color) =>
     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -64,12 +85,14 @@
         </div>`;
       return;
     }
+    const sc = $("#sc-habits") ? $("#sc-habits").scrollTop : 0;
     const seg = (id, label) => `<button class="seg ${habitTab === id ? "active" : ""}" data-seg="${id}">${label}</button>`;
     let body = habitTab === "today" ? renderToday() : habitTab === "weekly" ? renderWeekly() : renderOverall();
     $("#sc-habits").innerHTML = `
       <h2 class="scr-title">Statistics</h2>
       <div class="segmented">${seg("today", "Today")}${seg("weekly", "Weekly")}${seg("overall", "Overall")}</div>
       ${body}`;
+    $("#sc-habits").scrollTop = sc;
   }
 
   /* ---------------- TODAY ---------------- */
@@ -136,8 +159,17 @@
 
   /* ---------------- WEEKLY ---------------- */
   function renderWeekly() {
-    const rows = S.weekMatrix(S.today());
-    return rows.map(({ habit, days }) => {
+    const anchor = weekAnchor || S.today();
+    const start = S.startOfWeek(anchor);
+    const end = S.addDays(start, 6);
+    const atCurrent = end >= S.today();
+    const nav = `<div class="week-nav">
+      <button class="wn-btn" data-week="-1" aria-label="Previous week">‹</button>
+      <span class="wn-range">${fmtRange(start, end)}</span>
+      <button class="wn-btn" data-week="1" aria-label="Next week" ${atCurrent ? "disabled" : ""}>›</button>
+    </div>`;
+    const rows = S.weekMatrix(anchor);
+    const cards = rows.map(({ habit, days }) => {
       const dots = days.map((d, i) =>
         `<div class="day-cell">
            <span class="day-lbl">${DAYS[i]}</span>
@@ -153,6 +185,7 @@
         <div class="week-grid">${dots}</div>
       </div>`;
     }).join("");
+    return nav + cards;
   }
 
   /* ---------------- OVERALL ---------------- */
@@ -215,7 +248,15 @@
         ["Mood check-ins", `${S.moodTotal()}`],
       ].map(([l, val]) => `<div class="stat-card"><div class="stat-lbl">${l}</div><div class="stat-val">${val}</div></div>`).join("")}</div>
       <button class="btn-ghost" id="profileReplay" style="width:100%;margin-bottom:10px">Replay tutorial</button>
-      <button class="btn-ghost" id="profileSignOut" style="width:100%">Sign out</button>`;
+      <button class="btn-ghost" id="profileSignOut" style="width:100%;margin-bottom:10px">Sign out</button>
+      <button class="btn-ghost danger" id="profileReset" style="width:100%">Reset all data</button>
+      <div class="reset-confirm" id="resetConfirm" hidden>
+        <p>Are you sure you want to reset everything to zero? This clears all your habits, moods and time data.</p>
+        <div class="reset-actions">
+          <button class="btn-ghost" id="resetCancel">Cancel</button>
+          <button class="btn-danger" id="resetYes">Yes, reset</button>
+        </div>
+      </div>`;
     const nm = $("#profileName");
     if (nm) {
       const save = () => S.setName(nm.value);
@@ -227,6 +268,25 @@
     if (rp) rp.addEventListener("click", () => openTutorial());
     const so = $("#profileSignOut");
     if (so) so.addEventListener("click", () => Auth.signOut());
+    const rs = $("#profileReset"), rc = $("#resetConfirm");
+    if (rs) rs.addEventListener("click", () => { rs.hidden = true; if (rc) rc.hidden = false; });
+    const rcc = $("#resetCancel");
+    if (rcc) rcc.addEventListener("click", () => { if (rc) rc.hidden = true; if (rs) rs.hidden = false; });
+    const ry = $("#resetYes");
+    if (ry) ry.addEventListener("click", () => resetData());
+  }
+
+  async function resetData() {
+    try {
+      localStorage.removeItem(AUDIT_KEY);
+      localStorage.removeItem(AUDIT_CUST_KEY);
+      Object.keys(localStorage).forEach((k) => { if (k.indexOf("habito.quiz.") === 0) localStorage.removeItem(k); });
+    } catch (_) {}
+    audit = null; customBuckets = null; weekAnchor = null; habitTab = "today";
+    if (S.resetAll) { try { await S.resetAll(); } catch (_) {} }
+    if (S.load) { try { await S.load(user); } catch (_) {} }
+    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === "habits"));
+    go("habits");
   }
 
   /* ---------------- MOOD ---------------- */
@@ -244,6 +304,7 @@
   const setQuizN = (n) => { try { localStorage.setItem(quizKey(), String(n)); } catch (_) {} };
 
   function renderMood() {
+    const sc = $("#sc-mood") ? $("#sc-mood").scrollTop : 0;
     const t = S.today();
     const todays = S.getMood(t);
     const nm = S.getName();
@@ -251,7 +312,7 @@
 
     const chips = MOODS.map((m) =>
       `<button class="mood-chip ${todays && todays.key === m.key ? "sel" : ""}" data-mood="${m.key}">
-         <span class="mc-face" style="background:${cs(m.color)}">${m.emoji}</span><span class="mc-lbl">${m.label}</span>
+         <span class="mc-face" style="background:${cs(m.color)}">${faceSVG(m.key)}</span><span class="mc-lbl">${m.label}</span>
        </button>`).join("");
 
     // sleep (functional: from logged daily check-ins)
@@ -296,7 +357,7 @@
       const m = S.getMood(iso);
       const isToday = iso === t;
       cal += `<span class="cal-cell ${isToday ? "today" : ""}">${m
-        ? `<span class="cal-face" style="background:${cs(moodOf(m.key).color)}">${moodOf(m.key).emoji}</span>`
+        ? `<span class="cal-face" style="background:${cs(moodOf(m.key).color)}">${faceSVG(m.key)}</span>`
         : `<span class="cal-num">${d}</span>`}</span>`;
     }
 
@@ -327,7 +388,7 @@
       const top = moodOf(sum.top) || moodOf("calm");
       summaryHTML = `<div class="mood-summary">
         <div class="ms-label">Monthly mood summary</div>
-        <div class="ms-top"><span class="ms-title">${top.label}</span><span class="ms-emoji">${top.emoji}</span></div>
+        <div class="ms-top"><span class="ms-title">${top.label}</span><span class="ms-face" style="background:${cs(top.color)}">${faceSVG(top.key)}</span></div>
         <div class="ms-desc">${descs[top.key] || ""}</div>
         ${msStats(sum.count, sum.tally.calm || 0, sum.tally.happy || 0)}
       </div>`;
@@ -346,12 +407,12 @@
       <div class="mood-chips">${chips}</div>
       <div class="mood-stats">
         <div class="mstat sleep">
-          <div class="mstat-lbl">😴 Sleep duration</div>
+          <div class="mstat-lbl"><span class="mstat-ic">${ICON_SLEEP}</span>Sleep duration</div>
           <div class="mini-bars">${sleepBars}</div>
           <div class="mstat-val">${sleepVal}</div>
         </div>
         <div class="mstat stress">
-          <div class="mstat-lbl">😣 Stress indicator</div>
+          <div class="mstat-lbl"><span class="mstat-ic">${ICON_STRESS}</span>Stress indicator</div>
           <div class="mini-bars">${stressBars}</div>
           <div class="mstat-val">${stressVal}</div>
         </div>
@@ -360,10 +421,11 @@
       <div class="section-label">Mood calendar</div>
       <div class="mood-cal">${cal}</div>
       ${summaryHTML}`;
+    $("#sc-mood").scrollTop = sc;
   }
   function getAudit() {
     try { const v = JSON.parse(localStorage.getItem(AUDIT_KEY)); if (v) return v; } catch (_) {}
-    const o = {}; AUDIT_BUCKETS.forEach((b) => (o[b.id] = b.def)); return o;
+    const o = {}; AUDIT_BUCKETS.forEach((b) => (o[b.id] = 0)); return o; // start at zero
   }
   const saveAudit = () => localStorage.setItem(AUDIT_KEY, JSON.stringify(audit));
   function getCustom() {
@@ -401,6 +463,7 @@
   }
 
   function renderTime() {
+    const sc = $("#sc-time") ? $("#sc-time").scrollTop : 0;
     audit = audit || getAudit();
     const buckets = allBuckets();
     const v = (id) => Number(audit[id]) || 0;
@@ -448,6 +511,7 @@
       </div>
       <div class="section-label" style="margin-top:22px">The truth</div>
       <div class="aud-truth">${truth}</div>`;
+    $("#sc-time").scrollTop = sc;
   }
 
   /* ---------------- onboarding tutorial ---------------- */
@@ -546,6 +610,8 @@
     $("#sc-habits").addEventListener("click", (e) => {
       const seg = e.target.closest("[data-seg]");
       if (seg) { habitTab = seg.dataset.seg; renderHabits(); return; }
+      const wk = e.target.closest("[data-week]");
+      if (wk && !wk.disabled) { weekAnchor = S.addDays(weekAnchor || S.today(), Number(wk.dataset.week) * 7); renderHabits(); return; }
       const tg = e.target.closest("[data-toggle]");
       if (tg) { S.toggle(tg.dataset.toggle, tg.dataset.iso); renderHabits(); return; }
       const goEl = e.target.closest("[data-go]");

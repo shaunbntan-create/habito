@@ -5,8 +5,8 @@
    Dates are ISO "YYYY-MM-DD". Week starts Monday.
    ============================================================ */
 (function () {
-  const HKEY = "habito.habits.v1";
-  const MKEY = "habito.moods.v1";
+  const HKEY = "habito.habits.v2";
+  const MKEY = "habito.moods.v2";
   const NKEY = "habito.name.v1";
 
   /* ---------- date helpers ---------- */
@@ -18,14 +18,6 @@
   const dow = (s) => (parse(s).getDay() + 6) % 7; // Mon=0..Sun=6
   const startOfWeek = (s) => addDays(s, -dow(s));
 
-  /* ---------- seed templates (ids generated per user) ---------- */
-  const SEED = [
-    { name: "Do meditation",            emoji: "🧘", color: "pink",   freq: "Everyday" },
-    { name: "Drink 10 glasses of water", emoji: "💧", color: "blue",   freq: "Everyday" },
-    { name: "Take your medications",     emoji: "💊", color: "green",  freq: "5 days per week" },
-    { name: "Sleep at least 8 hours",    emoji: "🌙", color: "yellow", freq: "Everyday" },
-    { name: "Work at least 6 hours",     emoji: "💻", color: "purple", freq: "5 days per week" },
-  ];
   const rid = () => "h_" + Math.random().toString(36).slice(2, 10);
 
   /* ---------- state ---------- */
@@ -43,32 +35,6 @@
     return true;
   }
 
-  /* ---------- seeding (realistic demo history) ---------- */
-  function seedHistory(tpl, idx) {
-    const done = {};
-    const t = today();
-    for (let i = 0; i < 112; i++) {
-      const day = addDays(t, -i);
-      if (!isDue(tpl, day)) continue;
-      if (i === 0) { if ((idx + parse(day).getDate()) % 10 < 4) done[day] = true; }
-      else if (i <= 7) { done[day] = true; }
-      else { const k = (idx * 3 + parse(day).getDate() * 7 + parse(day).getMonth()) % 10; if (k < 8) done[day] = true; }
-    }
-    return done;
-  }
-  const seedHabits = () => SEED.map((s, idx) => ({ id: rid(), ...s, done: seedHistory(s, idx) }));
-  function seedMoods() {
-    const m = {};
-    const keys = ["happy", "calm", "happy", "sleepy", "calm", "anxious", "sad", "happy", "angry", "calm"];
-    const t = today();
-    for (let i = 0; i < 30; i++) {
-      const day = addDays(t, -i);
-      const seed = parse(day).getDate() * 3 + parse(day).getMonth();
-      m[day] = { key: keys[seed % keys.length], sleep: Math.round((6.2 + (seed % 6) * 0.45) * 10) / 10, stress: ["Low", "Mid", "High", "Low", "Mid"][seed % 5] };
-    }
-    return m;
-  }
-
   /* ---------- load (called on sign-in) ---------- */
   async function load(user) {
     client = (window.Auth && window.Auth.client) || null;
@@ -82,11 +48,18 @@
     else { mode = "local"; loadLocal(); }
   }
   function loadLocal() {
+    // No seeding: everyone (demo + real) starts at zero and builds from scratch.
     try { habits = JSON.parse(localStorage.getItem(HKEY)) || []; } catch (_) { habits = []; }
     try { moods = JSON.parse(localStorage.getItem(MKEY)) || {}; } catch (_) { moods = {}; }
-    if (!habits.length) habits = seedHabits();
-    if (!Object.keys(moods).length) moods = seedMoods();
-    saveLocal();
+  }
+  // wipe everything back to a blank slate (local + cloud)
+  async function resetAll() {
+    habits = []; moods = {};
+    try { localStorage.removeItem(HKEY); localStorage.removeItem(MKEY); } catch (_) {}
+    if (mode === "cloud" && client) {
+      try { await client.from("habits").delete().neq("id", "___none___"); } catch (_) {}
+      try { await client.from("moods").delete().neq("date", "___none___"); } catch (_) {}
+    }
   }
   async function loadCloud() {
     try {
@@ -210,7 +183,7 @@
   }
 
   window.Store = {
-    load, mode: () => mode, isNew, getName, setName,
+    load, mode: () => mode, isNew, getName, setName, resetAll,
     today, iso, parse, addDays, startOfWeek, dow,
     getHabits, getHabit, addHabit, removeHabit, toggle, isDone, isDue,
     dayScore, dayProgress, weekMatrix, stats, heatmap,

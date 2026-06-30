@@ -22,7 +22,7 @@
   --coral: #f77e72;  --coral-soft: #f9bbb2;
   --pink: #f58bc0;   --pink-soft: #f8c9e0;
   --purple: #c7a4e8; --purple-soft: #e2cef4;
-  --peach: #f9b58a;
+  --peach: #f9b58a;  --peach-soft: #f9d9c1;
 
   --accent: #f58bc0;        /* primary / FAB */
   --accent-ink: #b23a78;
@@ -39,6 +39,7 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
+button { touch-action: manipulation; } /* kill iOS double-tap zoom on +/- etc. */
 
 html, body { height: 100%; }
 body {
@@ -239,6 +240,10 @@ body {
 .bar-lbl { font-size: 11px; color: var(--ink-faint); font-weight: 600; }
 
 /* ---------- WEEKLY ---------- */
+.week-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; background: #efedea; border-radius: var(--r-pill); padding: 5px 6px; }
+.wn-btn { width: 36px; height: 36px; border-radius: 50%; border: none; background: #fff; cursor: pointer; font-size: 20px; line-height: 1; color: var(--ink); box-shadow: var(--shadow-card); }
+.wn-btn:disabled { opacity: .35; cursor: default; box-shadow: none; }
+.wn-range { font-family: var(--font-text); font-weight: 700; font-size: 14px; color: var(--ink); }
 .habit-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px 16px 14px; margin-bottom: 14px; box-shadow: var(--shadow-card); }
 .habit-top { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
 .habit-ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 18px; flex: 0 0 auto; }
@@ -287,13 +292,16 @@ body {
 .mood-chip:active { transform: scale(.96); }
 .mood-chip .mc-face { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size: 22px; }
 .mood-chip.sel { border-color: var(--ink); }
+.face-svg { width: 100%; height: 100%; display: block; }
 
 /* sleep + stress cards: title top, bar chart, big value bottom */
 .mood-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
 .mstat { border-radius: 22px; padding: 15px 16px 16px; box-shadow: var(--shadow-card); display: flex; flex-direction: column; min-height: 166px; }
 .mstat.sleep { background: linear-gradient(160deg, #ffdcb4, #f6a874); color: #5a3413; }
 .mstat.stress { background: linear-gradient(160deg, #e7d6f6, #c5a1e8); color: #3f2a55; }
-.mstat-lbl { font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+.mstat-lbl { font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.mstat-ic { display: inline-grid; place-items: center; }
+.mstat-ic svg { display: block; }
 .mini-bars { display: flex; align-items: flex-end; gap: 4px; height: 64px; margin: 14px 0 12px; flex: 1; }
 .mini-bar { flex: 1; border-radius: 5px; min-height: 6px; background: rgba(255, 255, 255, .72); }
 .mstat-val { font-family: var(--font-display); font-weight: 600; font-size: 24px; line-height: 1; }
@@ -323,6 +331,7 @@ body {
 .ms-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
 .ms-title { font-family: var(--font-display); font-weight: 600; font-size: 30px; color: #233f25; }
 .ms-emoji { font-size: 46px; line-height: 1; }
+.ms-face { width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto; box-shadow: var(--shadow-card); }
 .ms-desc { font-size: 13.5px; color: #2f4a31; margin: 4px 0 16px; line-height: 1.4; }
 .ms-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .ms-stat { background: rgba(255, 255, 255, .6); border-radius: 15px; padding: 12px 10px; }
@@ -402,6 +411,13 @@ body {
 .profile-name-input:focus { border-bottom-style: solid; border-bottom-color: var(--accent); }
 .profile-name-input::placeholder { color: var(--ink-faint); font-weight: 500; }
 .profile-email { color: var(--ink-soft); font-size: 13px; }
+.btn-ghost.danger { color: var(--coral); border-color: #f6cfc9; }
+.reset-confirm { margin-top: 12px; background: #fde4ee; border-radius: var(--r-md); padding: 16px; }
+.reset-confirm p { font-size: 13.5px; line-height: 1.45; color: var(--ink); margin-bottom: 12px; }
+.reset-actions { display: flex; gap: 10px; }
+.reset-actions .btn-ghost { flex: 1; height: 48px; margin: 0; }
+.btn-danger { flex: 1; height: 48px; border: none; border-radius: var(--r-pill); background: var(--coral); color: #fff; font-family: var(--font-text); font-weight: 700; font-size: 15px; cursor: pointer; }
+.btn-danger:active { transform: scale(.97); }
 
 /* ---------- onboarding tutorial (guided walkthrough, docked sheet) ---------- */
 .tut { position: absolute; inset: 0; z-index: 40; display: flex; align-items: flex-end; justify-content: center; }
